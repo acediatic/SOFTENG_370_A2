@@ -63,25 +63,36 @@ class SmallDisk(LoggingMixIn, Operations):
 
         next_block_num = 0
 
-        while True:
-            try:
-                current_block = read_block(next_block_num)
-
-                start = FILE_DATA_LOC + 21
-                end = FILE_DATA_LOC + FILE_DATA_SIZE
-
-                current_file_name = current_block[start:end]
-
-                print("\n\n\n\n\nYEET\n\n\n\n")
-                print(current_file_name == b_name_to_find)
-                
-                if current_file_name == b_name_to_find:
-                    return self.get_file_data(next_block_num)
-                else:
-                    next_block_num = current_block[NEXT_FILE_LOC]
-
-            except IOError:
+        while True:  
+            if next_block_num >= NUM_BLOCKS:
                 raise FuseOSError(ENOENT)
+            
+            current_block = read_block(next_block_num)
+
+            start = FILE_DATA_LOC + 21
+            end = FILE_DATA_LOC + FILE_DATA_SIZE
+
+            current_file_name = current_block[start:end]
+
+            if current_file_name == b_name_to_find:
+                return self.get_file_data(next_block_num)
+            else:
+                next_block_num = current_block[NEXT_FILE_LOC]
+
+
+    def getxattr(self, path, name, position=0):
+        attrs = self.getattr(path)
+
+        try:
+            return attrs[name]
+        except KeyError:
+            # edited as per https://piazza.com/class/klboaqfyq7q2ln?cid=56_f1
+            return bytes()      # Should return ENOATTR
+
+    def listxattr(self, path):
+        attrs = self.getattr(path)
+        return attrs.keys()
+
 
     def get_file_data(self, file_meta_block_num):
         meta_block = read_block(file_meta_block_num)
@@ -92,10 +103,11 @@ class SmallDisk(LoggingMixIn, Operations):
 
         locations = [2, 4, 6, 7, 9, 13, 17, 21]
 
-        prev_end = 0
+        prev_end = FILE_DATA_LOC
         for (i, detail) in enumerate(details):
-            file_details[detail] = bytes_to_int(meta_block[prev_end:locations[i]])
-            prev_end = locations[i]
+            end = locations[i] + FILE_DATA_LOC
+            file_details[detail] = bytes_to_int(meta_block[prev_end:end])
+            prev_end = end
 
         return file_details
         
