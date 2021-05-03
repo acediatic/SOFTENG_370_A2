@@ -28,8 +28,6 @@ def create_file_data(path, o_mode):
 
     st_name = path_name_as_bytes(path)
 
-    print("file data", o_mode, UID, GID, 1, 0, int_now)
-
     file_data = st_mode + st_uid + st_gid + st_nlinks + st_size + \
         st_ctime + st_mtime + st_atime + st_name
 
