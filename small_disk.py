@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 from __future__ import print_function, absolute_import, division
+from typing import Tuple
 from fuse import FUSE, FuseOSError, Operations, LoggingMixIn
 
 import logging
@@ -25,18 +26,27 @@ FILE_DATA_LOC = 2
 
 FH_LOC = 39
 
+MTIME_LOC = 13 + FILE_DATA_LOC
+ATIME_LOC = 17 + FILE_DATA_LOC
+
+MTIME_SIZE = 4
+ATIME_SIZE = 4
+
 
 class SmallDisk(LoggingMixIn, Operations):
     'Example memory filesystem. Supports only one level of files.'
 
-    def __init__(self):
-        root_data = read_block(0)
+    def get_first_file(self):
+        root = read_block(0)
+        return root[NEXT_FILE_LOC]
 
-        self.next_file = root_data[NEXT_FILE_LOC]
+    def get_first_free_block(self):
+        root = read_block(0)
+        return root[NEXT_BLOCK_LOC]
 
-        self.next_free_block = root_data[NEXT_BLOCK_LOC]
-
-        self.fh = root_data[FILE_DATA_LOC]
+    def get_fh(self):
+        root = read_block(0)
+        return root[FILE_DATA_LOC]
 
     def create(self, path, mode):
         file_data = create_file_data(path, (S_IFREG | mode))
@@ -51,20 +61,42 @@ class SmallDisk(LoggingMixIn, Operations):
 
         write_block(next_free_block, data)
 
-        self.fh += 1
+        fh = self.get_fh()
+        fh += 1
 
-        self.convert_bytes_and_update_block(0, FH_LOC, self.fh, FH_SIZE)
+        self.convert_bytes_and_update_block(0, FH_LOC, fh, FH_SIZE)
 
-        self.convert_bytes_and_update_block(0, NEXT_FILE_LOC, next_free_block, NEXT_FILE_SIZE)
+        last_file = self.find_last_file()
 
-        return self.fh
+        self.convert_bytes_and_update_block(
+            last_file, NEXT_FILE_LOC, next_free_block, NEXT_FILE_SIZE)
+
+        return fh
+
+    # def utimens(self, path, times=None):
+    #     now = int(time())
+
+    #     times = tuple(int(t) for t in times)
+    #     atime, mtime = times if times else (now, now)
+
+    #     file_num = self.find_file_num(path)
+
+    #     self.convert_bytes_and_update_block(
+    #         file_num, MTIME_LOC, mtime, MTIME_SIZE)
+    #     self.convert_bytes_and_update_block(
+    #         file_num, ATIME_LOC, atime, ATIME_SIZE)
 
     def unlink(self, path):
-        self.data.pop(path)
-        self.files.pop(path)
+        (prev_block_num, file_block_num, next_block_num) = self.find_file_tuple(path)
+
+        if (prev_block_num == file_block_num or prev_block_num == next_block_num or file_block_num == next_block_num):
+            raise IOError("prev, current, or next block equal")
+
+        self.convert_bytes_and_update_block(
+            prev_block_num, NEXT_FILE_LOC, next_block_num, NEXT_FILE_SIZE)
 
     def getattr(self, path, fh=None):
-        file_block_num = self.find_file_num_from_path()
+        file_block_num = self.find_file_num(path)
         return self.get_file_data(file_block_num)
 
     def getxattr(self, path, name, position=0):
@@ -125,16 +157,21 @@ class SmallDisk(LoggingMixIn, Operations):
 
     ##### UTIL METHODS #####
 
-    def find_file_num_from_path(self, path: str) -> int:
+    def find_file_num(self, path):
+        _, file_num, _ = self.find_file_tuple(path)
+        return file_num
+
+    def find_file_tuple(self, path: str) -> Tuple[int, int, int]:
         b_name_to_find = path_name_as_bytes(path)
 
-        next_block_num = 0
+        block_num = 0
+        prev_block_num = 0
 
         while True:
-            if next_block_num >= NUM_BLOCKS:
+            if block_num >= NUM_BLOCKS:
                 raise FuseOSError(ENOENT)
 
-            current_block = read_block(next_block_num)
+            current_block = read_block(block_num)
 
             start = FILE_DATA_LOC + 21
             end = FILE_DATA_LOC + FILE_DATA_SIZE
@@ -142,9 +179,23 @@ class SmallDisk(LoggingMixIn, Operations):
             current_file_name = current_block[start:end]
 
             if current_file_name == b_name_to_find:
-                return next_block_num
+                return (prev_block_num, block_num, current_block[NEXT_FILE_LOC])
             else:
-                next_block_num = current_block[NEXT_FILE_LOC]
+                prev_block_num = block_num
+                block_num = current_block[NEXT_FILE_LOC]
+
+    def find_last_file(self) -> int:
+        current_block_num = next_block_num = 0
+
+        while next_block_num < NUM_BLOCKS:
+            current_block_num = next_block_num
+            next_block_num = self.find_next_file(current_block_num)
+
+        return current_block_num
+
+    def find_next_file(self, current_file):
+        current_meta = read_block(current_file)
+        return current_meta[0]
 
     def update_block(self, block_num: int, start: int, data: bytearray):
         block_data = read_block(block_num)
@@ -158,19 +209,18 @@ class SmallDisk(LoggingMixIn, Operations):
         self.update_block(block_num, start, data)
 
     def find_free_block(self):
-        if self.next_free_block >= NUM_BLOCKS:
+        first_free_block_i = self.get_first_free_block()
+        if first_free_block_i >= NUM_BLOCKS:
             raise IOError("No free blocks remaining")
 
-        free_block_i = self.next_free_block
-        free_block = read_block(free_block_i)
+        free_block = read_block(first_free_block_i)
 
         next_free_block_i = free_block[NEXT_BLOCK_LOC]
-        self.next_free_block = next_free_block_i
 
-        data = int_to_bytes(next_free_block_i, 1)
-        self.update_block(0, NEXT_BLOCK_LOC, data)
+        self.convert_bytes_and_update_block(
+            0, NEXT_BLOCK_LOC, next_free_block_i, 1)
 
-        return free_block_i
+        return first_free_block_i
 
 
 if __name__ == '__main__':
