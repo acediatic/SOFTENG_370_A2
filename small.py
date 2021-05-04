@@ -210,7 +210,10 @@ class SmallDisk(LoggingMixIn, Operations):
         file_num = self.find_file_num(path)
         file_blocks = self.get_all_file_blocks(file_num)
 
+        file_size = self.get_file_size(file_num)
+
         current_file_data = self.get_current_file_data(file_num)
+        current_file_data = current_file_data[:file_size]
 
         if length == None:
             new_data = (current_file_data[:offset].ljust(offset, '\x00'.encode('ascii'))
@@ -223,6 +226,8 @@ class SmallDisk(LoggingMixIn, Operations):
                 length, '\x00'.encode('ascii'))
 
         new_file_size = len(new_data)
+
+        print("NEW LENGTH!", new_file_size)
 
         num_blocks_needed = max(ceil(new_file_size / EFFECTIVE_BLOCK_SIZE), 1)
 
