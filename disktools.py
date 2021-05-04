@@ -1,11 +1,6 @@
 from __future__ import print_function, division
 import os
-from constants import NAME_SIZE
-
-NUM_BLOCKS = 16
-BLOCK_SIZE = 64
-DISK_NAME = 'my-disk'
-
+from constants import *
 
 def low_level_format():
     '''Creates the file system space on disk.

@@ -10,28 +10,35 @@ from time import time
 from errno import ENOENT
 from stat import S_IFDIR, S_IFLNK, S_IFREG
 
-from disktools import NUM_BLOCKS, bytes_to_int, bytes_to_pathname, int_to_bytes, path_name_as_bytes, read_block, write_block
+from disktools import BLOCK_SIZE, NUM_BLOCKS, bytes_to_int, bytes_to_pathname, int_to_bytes, path_name_as_bytes, read_block, write_block
 
-from format_small_disk import create_file_data
+from format_small_disk import create_file_data, format_block
 
 from constants import *
+
+from math import ceil
 
 
 class SmallDisk(LoggingMixIn, Operations):
     'Example memory filesystem. Supports only one level of files.'
 
     def get_first_file(self):
-        root = read_block(0)
+        root = read_block(ROOT_LOC)
         fh_b = root[NEXT_FILE_LOC: NEXT_FILE_LOC + NEXT_FILE_SIZE]
         return bytes_to_int(fh_b)
 
-    def get_first_free_block(self):
-        root = read_block(0)
-        return root[NEXT_BLOCK_LOC]
+    def get_block(self, block_num):
+        current_block = read_block(block_num)
+        b_block_num = current_block[NEXT_BLOCK_LOC: NEXT_BLOCK_LOC+NEXT_BLOCK_SIZE]
+        return bytes_to_int(b_block_num)
 
     def get_fh(self):
-        root = read_block(0)
+        root = read_block(ROOT_LOC)
         return root[FH_LOC]
+
+    def get_file_size(self, file_num):
+        file_data = read_block(file_num)
+        return bytes_to_int(file_data[ST_SIZE_LOC: ST_SIZE_LOC + ST_SIZE_SIZE])
 
     def create(self, path, mode):
         file_data = create_file_data(path, (S_IFREG | mode))
@@ -49,10 +56,11 @@ class SmallDisk(LoggingMixIn, Operations):
         fh = self.get_fh()
         fh += 1
 
-        self.convert_bytes_and_update_block(0, FH_LOC, fh, FH_SIZE)
+        self.convert_bytes_and_update_block(ROOT_LOC, FH_LOC, fh, FH_SIZE)
 
         last_file = self.find_last_file()
 
+        print("NEXT FREE BLOCK: ", next_free_block)
         self.convert_bytes_and_update_block(
             last_file, NEXT_FILE_LOC, next_free_block, NEXT_FILE_SIZE)
 
@@ -82,7 +90,7 @@ class SmallDisk(LoggingMixIn, Operations):
 
     def getattr(self, path, fh=None):
         file_block_num = self.find_file_num(path)
-        return self.get_file_data(file_block_num)
+        return self.get_file_description(file_block_num)
 
     def getxattr(self, path, name, position=0):
         attrs = self.getattr(path)
@@ -109,16 +117,30 @@ class SmallDisk(LoggingMixIn, Operations):
 
         return filenames
 
+    def get_all_file_blocks(self, file_num):
+        block_nums = []
+        b_num = self.get_block(file_num)
+
+        while b_num < NUM_BLOCKS:
+            block_nums.append(b_num)
+            b_num = self.get_block(b_num)
+
+        return block_nums
+
     def get_file_name(self, file_num):
         file_data = read_block(file_num)
         name_data = file_data[NAME_LOC:NAME_LOC+NAME_SIZE]
         print("Name data", name_data)
         return bytes_to_pathname(name_data)
 
+    def read(self, path, size, offset, fh):
+        file_num = self.find_file_num(path)
+        return self.get_all_file_data(file_num)[offset:offset + size]
+
     def readdir(self, path, fh):
         return ['.', '..'] + [x[1:] for x in self.get_all_filenames()]
 
-    def get_file_data(self, file_meta_block_num):
+    def get_file_description(self, file_meta_block_num):
         meta_block = read_block(file_meta_block_num)
         file_details = dict()
 
@@ -135,31 +157,71 @@ class SmallDisk(LoggingMixIn, Operations):
 
         return file_details
 
-        # def write(self, path, data, offset, fh):
-    #     b_name = path_name_as_bytes(path)
+    def get_all_file_data(self, file_num):
+        file_blocks = self.get_all_file_blocks(file_num)
 
-    #     current_file = self.next_file
+        all_file_data = b''
 
-    # if size of file < SIZE_BLOCK:
-    # next_block = int_to_bytes(NUM_BLOCKS)
-    # else next_block = get next free block.
+        for block_num in file_blocks:
+            all_file_data += read_block(block_num)
 
-    #     try:
-    #         while(true):
-    #             current_data = read_block(current_file)
-    #             current_name =
+        return all_file_data
 
-    #     except IOError:
-    #         raise IOError("File not found")
+    def write(self, path, data, offset, fh, length=None):
+        print("WRIET DATA\n\n\n")
+        print(self, path, data, offset, fh, length)
 
-    #     self.data[path] = (
-    #         # make sure the data gets inserted at the right offset
-    #         self.data[path][:offset].ljust(offset, '\x00'.encode('ascii'))
-    #         + data
-    #         # and only overwrites the bytes that data is replacing
-    #         + self.data[path][offset + len(data):])
-    #     self.files[path]['st_size'] = len(self.data[path])
-    #     return len(data)
+        file_num = self.find_file_num(path)
+        file_blocks = self.get_all_file_blocks(file_num)
+
+        all_file_data = self.get_all_file_data(file_num)
+
+        if not length:
+            new_data = (all_file_data[:offset].ljust(offset, '\x00'.encode('ascii'))
+                        + data
+                        # and only overwrites the bytes that data is replacing
+                        + all_file_data[offset + len(data):])
+        else:  # truncate
+            # make sure extending the file fills in zero bytes
+            new_data = all_file_data[:length].ljust(
+                length, '\x00'.encode('ascii'))
+
+        print("new data", new_data)
+
+        new_file_size = len(new_data)
+
+        num_blocks_needed = ceil(new_file_size / EFFECTIVE_BLOCK_SIZE)
+
+        print("Num bloks needed", num_blocks_needed)
+
+        if len(file_blocks) != new_file_size:
+            if len(file_blocks) < num_blocks_needed:
+                while len(file_blocks) < num_blocks_needed:
+                    file_blocks.append(self.find_free_block())
+            else:
+                while len(file_blocks) > num_blocks_needed:
+                    self.format_block(file_blocks.pop())
+
+        print("Length blocks", len(file_blocks))
+
+        for i in range(num_blocks_needed):
+            data_to_write = new_data[:EFFECTIVE_BLOCK_SIZE]
+            new_data = new_data[EFFECTIVE_BLOCK_SIZE:]
+
+            next_block = NUM_BLOCKS if i == num_blocks_needed - \
+                1 else file_blocks[i+1]
+            b_next_block = int_to_bytes(next_block, BLOCK_SIZE)
+            print("writing data", b_next_block +
+                  data_to_write, " to block ", file_blocks[i])
+            write_block(file_blocks[i], b_next_block + data_to_write)
+
+        self.convert_bytes_and_update_block(
+            file_num, FILE_DATA_LOC + ST_SIZE_LOC, new_file_size, ST_SIZE_SIZE)
+
+        return len(data)
+
+    def truncate(self, path, length, fh=None):
+        self.write(path, None, 0, None, length)
 
     ##### UTIL METHODS #####
 
@@ -170,8 +232,8 @@ class SmallDisk(LoggingMixIn, Operations):
     def find_file_tuple(self, path: str) -> Tuple[int, int, int]:
         b_name_to_find = path_name_as_bytes(path)
 
-        block_num = 0
-        prev_block_num = 0
+        block_num = ROOT_LOC
+        prev_block_num = ROOT_LOC
 
         while True:
             if block_num >= NUM_BLOCKS:
@@ -191,7 +253,7 @@ class SmallDisk(LoggingMixIn, Operations):
                 block_num = current_block[NEXT_FILE_LOC]
 
     def find_last_file(self) -> int:
-        current_block_num = next_block_num = 0
+        current_block_num = next_block_num = ROOT_LOC
 
         while next_block_num < NUM_BLOCKS:
             current_block_num = next_block_num
@@ -215,7 +277,7 @@ class SmallDisk(LoggingMixIn, Operations):
         self.update_block(block_num, start, data)
 
     def find_free_block(self):
-        first_free_block_i = self.get_first_free_block()
+        first_free_block_i = self.get_block(ROOT_LOC)
         if first_free_block_i >= NUM_BLOCKS:
             raise IOError("No free blocks remaining")
 
@@ -223,10 +285,19 @@ class SmallDisk(LoggingMixIn, Operations):
 
         next_free_block_i = free_block[NEXT_BLOCK_LOC]
 
+        print("\n\n\n\n\nnext Free block", next_free_block_i)
+
         self.convert_bytes_and_update_block(
-            0, NEXT_BLOCK_LOC, next_free_block_i, 1)
+            ROOT_LOC, NEXT_BLOCK_LOC, next_free_block_i, NEXT_BLOCK_SIZE)
 
         return first_free_block_i
+
+    def format_block(self, block_num):
+        first_free_block = self.get_block(ROOT_LOC)
+        format_block(block_num, first_free_block)
+
+        self.convert_bytes_and_update_block(
+            ROOT_LOC, NEXT_BLOCK_LOC, block_num, NEXT_BLOCK_SIZE)
 
 
 if __name__ == '__main__':

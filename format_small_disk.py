@@ -15,7 +15,7 @@ GID = getgid()
 
 # Create the file's data (metadata).
 def create_file_data(path, o_mode):
-    
+
     int_now = int(time())
 
     st_mode = int_to_bytes(o_mode, ST_MODE_SIZE)
@@ -46,9 +46,10 @@ def format_root():
     fh = int_to_bytes(0, FH_SIZE)
 
     # 1 + 1 + 37 + 1
-    root_data = next_file + next_free_block + metadata + fh # + other data
+    root_data = next_file + next_free_block + metadata + fh  # + other data
 
     write_block(0, root_data)
+
 
 def format_block(block_num, next_free_block):
     null_next_file = int_to_bytes(NUM_BLOCKS, NEXT_FILE_SIZE)
@@ -56,11 +57,10 @@ def format_block(block_num, next_free_block):
     padded_data = null_next_file + next_block + bytearray(BLOCK_SIZE - 2)
     write_block(block_num, padded_data)
 
-# formats all blocks EXCEPT ROOT
-
 
 def format_all_blocks():
-    for i in range(1, NUM_BLOCKS):
+    # formats all blocks EXCEPT ROOT
+    for i in range(NUM_BLOCKS):
         format_block(i, i+1)
 
 
