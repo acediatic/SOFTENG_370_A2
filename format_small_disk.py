@@ -14,14 +14,14 @@ GID = getgid()
 
 
 # Create the file's data (metadata).
-def create_file_data(path, o_mode):
+def create_file_data(path, o_mode, st_n_links = 1):
 
     int_now = int(time())
 
     st_mode = int_to_bytes(o_mode, ST_MODE_SIZE)
     st_uid = int_to_bytes(UID, ST_UID_SIZE)
     st_gid = int_to_bytes(GID, ST_GID_SIZE)
-    st_nlinks = int_to_bytes(1, ST_NLINKS_SIZE)
+    st_nlinks = int_to_bytes(st_n_links, ST_NLINKS_SIZE)
     st_size = int_to_bytes(0, ST_SIZE_SIZE)
     st_ctime = int_to_bytes(int_now, ST_CTIME_SIZE)
     st_mtime = int_to_bytes(int_now, ST_MTIME_SIZE)
@@ -36,12 +36,12 @@ def create_file_data(path, o_mode):
 
 
 # Root's metadata stored in the 0th block.
-def format_root():
+def format_dir(path, mode, file_num = 0, next_free_block = 1):
     # Block index out of range, indicating no next block
-    next_free_block = int_to_bytes(1, NEXT_BLOCK_SIZE)
+    next_free_block = int_to_bytes(next_free_block, NEXT_BLOCK_SIZE)
     next_file = int_to_bytes(NUM_BLOCKS, NEXT_FILE_SIZE)
 
-    metadata = create_file_data('/', (S_IFDIR | 0o755))
+    metadata = create_file_data(path, (S_IFDIR | mode), 2)
 
     fh = int_to_bytes(0, FH_SIZE)
 
@@ -49,7 +49,7 @@ def format_root():
     root_data = next_file + next_free_block + metadata + fh
     padded_root_data = root_data + bytearray(BLOCK_SIZE - len(root_data)) 
 
-    write_block(0, padded_root_data)
+    write_block(file_num, padded_root_data)
 
 
 def format_block(block_num, next_free_block):
@@ -67,6 +67,6 @@ def format_all_blocks():
 
 if __name__ == '__main__':
     format_all_blocks()
-    format_root()
+    format_dir('/', 0o755)
     for i in range(10):
         print_block(i)

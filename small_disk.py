@@ -7,12 +7,12 @@ import logging
 
 from time import time
 
-from errno import ENOENT
-from stat import S_IFDIR, S_IFLNK, S_IFREG
+from errno import ENOENT, ENOTEMPTY
+from stat import ST_NLINK, S_IFDIR, S_IFLNK, S_IFREG
 
 from disktools import BLOCK_SIZE, NUM_BLOCKS, bytes_to_int, bytes_to_pathname, int_to_bytes, path_name_as_bytes, print_block, read_block, write_block
 
-from format_small_disk import create_file_data, format_block
+from format_small_disk import create_file_data, format_block, format_dir
 
 from constants import *
 
@@ -22,8 +22,8 @@ from math import ceil
 class SmallDisk(LoggingMixIn, Operations):
     'Example memory filesystem. Supports only one level of files.'
 
-    def get_first_file(self):
-        root = read_block(ROOT_LOC)
+    def get_first_file(self, root_num):
+        root = read_block(root_num)
         fh_b = root[NEXT_FILE_LOC: NEXT_FILE_LOC + NEXT_FILE_SIZE]
         return bytes_to_int(fh_b)
 
@@ -104,13 +104,18 @@ class SmallDisk(LoggingMixIn, Operations):
         attrs = self.getattr(path)
         return attrs.keys()
 
-    def get_all_filenames(self) -> list:
+    def get_all_filenames(self, path) -> list:
         filenames = []
-        # This intentionally skips the root
-        fnum = self.get_first_file()
+
+        # files will always come after their directory
+        dir_num = self.find_file_num(path)
+
+        fnum = self.get_first_file(dir_num)
         while(fnum < NUM_BLOCKS):
             fname = self.get_file_name(fnum)
-            filenames.append(fname)
+
+            if len(fname.split(path)) == 2:
+                filenames.append('/' + fname.split('/')[-1])
 
             fnum = self.find_next_file(fnum)
 
@@ -135,8 +140,47 @@ class SmallDisk(LoggingMixIn, Operations):
         file_num = self.find_file_num(path)
         return self.get_current_file_data(file_num)[offset:offset + size]
 
-    def readdir(self, path, fh):
-        return ['.', '..'] + [x[1:] for x in self.get_all_filenames()]
+    def mkdir(self, path, mode):
+        new_dir_num = self.find_free_block()
+        format_dir(path, mode, file_num=new_dir_num,
+                   next_free_block=NUM_BLOCKS)
+
+        last_file = self.find_last_file()
+        self.convert_bytes_and_update_block(
+            last_file, NEXT_FILE_LOC, new_dir_num, NEXT_FILE_SIZE)
+
+        dir_path = self.get_dir_path(path)
+
+        dir_num = self.find_file_num(dir_path)
+        self.change_n_link(dir_num)
+
+    def get_dir_path(self, path):
+        dir_path = path.rsplit('/', 1)[0]
+        if not dir_path:
+            dir_path = '/'
+        return dir_path
+
+    def change_n_link(self, dir_num: int, positive=True):
+        direction = 1 if positive else -1
+
+        root = read_block(dir_num)
+        st_n_link = bytes_to_int(
+            root[ST_N_LINKS_LOC: ST_N_LINKS_LOC+ST_NLINKS_SIZE])
+        st_n_link += 1 * direction
+        self.convert_bytes_and_update_block(
+            ROOT_LOC, ST_N_LINKS_LOC, st_n_link, ST_NLINKS_SIZE)
+
+    def readdir(self, path, fh=None):
+        return ['.', '..'] + [x[1:] for x in self.get_all_filenames(path)]
+
+    def rmdir(self, path):
+        if len(self.readdir(path)) > 2:
+            raise FuseOSError(ENOTEMPTY)
+        else:
+            parent_path = self.get_dir_path(path)
+            self.unlink(path)
+            parent_num = self.find_file_num(parent_path)
+            self.change_n_link(parent_num)
 
     def get_file_description(self, file_meta_block_num):
         meta_block = read_block(file_meta_block_num)
@@ -184,7 +228,7 @@ class SmallDisk(LoggingMixIn, Operations):
 
         new_file_size = len(new_data)
 
-        num_blocks_needed = ceil(new_file_size / EFFECTIVE_BLOCK_SIZE)
+        num_blocks_needed = max(ceil(new_file_size / EFFECTIVE_BLOCK_SIZE), 1)
 
         if len(file_blocks) != num_blocks_needed:
             if len(file_blocks) < num_blocks_needed:
