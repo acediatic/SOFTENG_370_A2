@@ -1,6 +1,7 @@
 from __future__ import print_function, division
 import io
 import os
+from small_disk import NAME_SIZE
 
 NUM_BLOCKS = 16
 BLOCK_SIZE = 64
@@ -82,7 +83,7 @@ def path_name_as_bytes(path):
     for c in file_name:
         name_bytes.append(int_to_bytes(ord(c), 1))
 
-    name_bytes.append(bytearray(16 - len(name_bytes)))
+    name_bytes.append(bytearray(NAME_SIZE - len(name_bytes)))
 
     name = b''.join(name_bytes)
 

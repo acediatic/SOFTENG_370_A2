@@ -14,26 +14,37 @@ from disktools import NUM_BLOCKS, bytes_to_int, bytes_to_pathname, int_to_bytes,
 
 from format_small_disk import create_file_data
 
-FILE_DATA_SIZE = 37
+# FILE METADATA SIZES
 NEXT_FILE_SIZE = 1
 NEXT_BLOCK_SIZE = 1
-FH_SIZE = 1
+FILE_DATA_SIZE = 37
 
-# Order of storage in metadata block
+# FILE METADATA LOCATIONS
 NEXT_FILE_LOC = 0
 NEXT_BLOCK_LOC = 1
 FILE_DATA_LOC = 2
 
-FH_LOC = 39
+# STATS SIZE CONSTANTS
+ST_MODE_SIZE = 2
+ST_UID_SIZE = 2
+ST_GID_SIZE = 2
+ST_NLINKS_SIZE = 1
+ST_SIZE_SIZE = 2
+ST_CTIME_SIZE = 4
+ST_MTIME_SIZE = 4
+ST_ATIME_SIZE = 4
+NAME_SIZE = 16
 
+# STATS LOCATION CONSTANTS
 MTIME_LOC = 13 + FILE_DATA_LOC
 ATIME_LOC = 17 + FILE_DATA_LOC
-
-MTIME_SIZE = 4
-ATIME_SIZE = 4
-
-NAME_SIZE = 16
 NAME_LOC = FILE_DATA_LOC + FILE_DATA_SIZE - NAME_SIZE
+
+# ROOT METADATA SIZES
+FH_SIZE = 1
+
+# ROOT METADATA LOCATIONS
+FH_LOC = 39
 
 
 class SmallDisk(LoggingMixIn, Operations):
@@ -86,9 +97,9 @@ class SmallDisk(LoggingMixIn, Operations):
         file_num = self.find_file_num(path)
 
         self.convert_bytes_and_update_block(
-            file_num, MTIME_LOC, mtime, MTIME_SIZE)
+            file_num, MTIME_LOC, mtime, ST_MTIME_SIZE)
         self.convert_bytes_and_update_block(
-            file_num, ATIME_LOC, atime, ATIME_SIZE)
+            file_num, ATIME_LOC, atime, ST_ATIME_SIZE)
 
     def unlink(self, path):
         (prev_block_num, file_block_num, next_block_num) = self.find_file_tuple(path)
@@ -125,7 +136,7 @@ class SmallDisk(LoggingMixIn, Operations):
             filenames.append(fname)
 
             fnum = self.find_next_file(fnum)
-        
+
         return filenames
 
     def get_file_name(self, file_num):
