@@ -6,18 +6,14 @@ from fuse import FUSE, FuseOSError, Operations, LoggingMixIn
 import logging
 
 from time import time
+from math import ceil
 
 from errno import ENOENT, ENOTEMPTY
 from stat import ST_NLINK, S_IFDIR, S_IFLNK, S_IFREG
 
-from disktools import BLOCK_SIZE, NUM_BLOCKS, bytes_to_int, bytes_to_pathname, int_to_bytes, path_name_as_bytes, print_block, read_block, write_block
-
-from format_small_disk import create_file_data, format_block, format_dir
-
+from disktools import BLOCK_SIZE, NUM_BLOCKS, bytes_to_int,  int_to_bytes, print_block, read_block, write_block
+from format import create_file_data, format_block, format_dir, path_name_as_bytes, bytes_to_pathname
 from constants import *
-
-from math import ceil
-
 
 class SmallDisk(LoggingMixIn, Operations):
     'Example memory filesystem. Supports only one level of files.'

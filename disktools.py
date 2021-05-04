@@ -1,9 +1,10 @@
 from __future__ import print_function, division
-from errno import EINVAL
+import io
 import os
-from constants import *
-from fuse import FuseOSError
 
+NUM_BLOCKS = 16
+BLOCK_SIZE = 64
+DISK_NAME = 'my-disk'
 
 def low_level_format():
     '''Creates the file system space on disk.
@@ -15,7 +16,6 @@ def low_level_format():
             disk.write(block)
         disk.flush()
 
-
 def read_block(block_num):
     '''Reads block_num block from the file system.
         Return: a bytearray of BLOCK_SIZE
@@ -26,7 +26,6 @@ def read_block(block_num):
         disk.seek(block_num * BLOCK_SIZE)
         return bytearray(disk.read(BLOCK_SIZE))  # .encode())
 
-
 def write_block(block_num, data):
     '''Writes data to the block_num block.'''
     if block_num >= NUM_BLOCKS:
@@ -35,18 +34,16 @@ def write_block(block_num, data):
         disk.seek(block_num * BLOCK_SIZE)
         disk.write(data)
 
-
 def print_block(block_num):
     '''Prints block_num block data.'''
     data = read_block(block_num)
     print(
-        'block:', block_num,
+        'block:', block_num, 
         ' length of data:', len(data),
-        ' type of data:', type(data))
+        ' type of data:', type(data) )
     for b in data:
         print(b, end=' ')
     print()
-
 
 def int_to_bytes(value, num_bytes):
     '''Store positive integer value in a big-endian bytearray of num_bytes.'''
@@ -57,7 +54,6 @@ def int_to_bytes(value, num_bytes):
         value = value // 256
     return bytes
 
-
 def bytes_to_int(bytes):
     '''Convert a big-endian bytearray into a positive integer.'''
     value = 0
@@ -66,40 +62,8 @@ def bytes_to_int(bytes):
         value *= 256
     value += bytes[-1]
     return value
-
-
-def path_name_as_bytes(path):
-    name_bytes = []
-
-    file_name = path
-
-    if not file_name:
-        file_name = '/'
-
-    for c in file_name:
-        name_bytes.append(int_to_bytes(ord(c), 1))
-
-    if NAME_SIZE - len(name_bytes) < 0:
-        raise FuseOSError(EINVAL)
-
-    name_bytes.append(bytearray(NAME_SIZE - len(name_bytes)))
-
-    name = b''.join(name_bytes)
-
-    return name
-
-
-def bytes_to_pathname(bytes):
-    ascii_name = []
-    for int_val in bytes:
-        if int_val == 0:
-            break
-        else:
-            ascii_name.append(chr(int_val))
-
-    return ''.join(ascii_name)
-
-
+        
 if __name__ == '__main__':
     low_level_format()
     os.system('od --address-radix=x -t x1 -a my-disk')
+    

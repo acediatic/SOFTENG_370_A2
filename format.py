@@ -1,7 +1,10 @@
 from logging import getLogger
 from os import write
-from disktools import BLOCK_SIZE, NUM_BLOCKS, int_to_bytes, path_name_as_bytes, print_block, write_block
+from disktools import BLOCK_SIZE, NUM_BLOCKS, int_to_bytes, print_block, write_block
 from constants import *
+
+from errno import EINVAL
+from fuse import FuseOSError
 
 from time import time
 
@@ -63,6 +66,38 @@ def format_all_blocks():
     # formats all blocks EXCEPT ROOT
     for i in range(1, NUM_BLOCKS):
         format_block(i, i+1)
+
+
+def path_name_as_bytes(path):
+    name_bytes = []
+
+    file_name = path
+
+    if not file_name:
+        file_name = '/'
+
+    for c in file_name:
+        name_bytes.append(int_to_bytes(ord(c), 1))
+
+    if NAME_SIZE - len(name_bytes) < 0:
+        raise FuseOSError(EINVAL)
+
+    name_bytes.append(bytearray(NAME_SIZE - len(name_bytes)))
+
+    name = b''.join(name_bytes)
+
+    return name
+
+
+def bytes_to_pathname(bytes):
+    ascii_name = []
+    for int_val in bytes:
+        if int_val == 0:
+            break
+        else:
+            ascii_name.append(chr(int_val))
+
+    return ''.join(ascii_name)
 
 
 if __name__ == '__main__':
