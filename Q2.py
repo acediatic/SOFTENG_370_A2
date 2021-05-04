@@ -8,6 +8,9 @@ from errno import ENOENT
 from stat import S_IFDIR, S_IFLNK, S_IFREG
 from time import time
 
+# Top of file
+from os import getuid, getgid
+
 from fuse import FUSE, FuseOSError, Operations, LoggingMixIn
 
 if not hasattr(__builtins__, 'bytes'):
@@ -27,7 +30,9 @@ class Memory(LoggingMixIn, Operations):
             st_ctime=now,
             st_mtime=now,
             st_atime=now,
-            st_nlink=2)
+            st_nlink=2,
+            st_uid = getuid(),
+            st_gid = getgid())
 
     def chmod(self, path, mode):
         self.files[path]['st_mode'] &= 0o770000
@@ -45,7 +50,9 @@ class Memory(LoggingMixIn, Operations):
             st_size=0,
             st_ctime=time(),
             st_mtime=time(),
-            st_atime=time())
+            st_atime=time(),
+            st_uid = getuid(),
+            st_gid = getgid())
 
         self.fd += 1
         return self.fd
@@ -62,7 +69,8 @@ class Memory(LoggingMixIn, Operations):
         try:
             return attrs[name]
         except KeyError:
-            return ''       # Should return ENOATTR
+            # edited as per https://piazza.com/class/klboaqfyq7q2ln?cid=56_f1
+            return bytes()      # Should return ENOATTR
 
     def listxattr(self, path):
         attrs = self.files[path].get('attrs', {})
