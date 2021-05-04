@@ -1,7 +1,7 @@
 from logging import getLogger
 from os import write
-from small_disk import FH_SIZE, NEXT_BLOCK_SIZE, NEXT_FILE_SIZE, ST_ATIME_SIZE, ST_CTIME_SIZE, ST_GID_SIZE, ST_MODE_SIZE, ST_MTIME_SIZE, ST_NLINKS_SIZE, ST_SIZE_SIZE, ST_UID_SIZE
 from disktools import BLOCK_SIZE, NUM_BLOCKS, int_to_bytes, path_name_as_bytes, print_block, write_block
+from constants import *
 
 from time import time
 

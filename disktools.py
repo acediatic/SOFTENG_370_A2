@@ -1,7 +1,6 @@
 from __future__ import print_function, division
-import io
 import os
-from small_disk import NAME_SIZE
+from constants import NAME_SIZE
 
 NUM_BLOCKS = 16
 BLOCK_SIZE = 64
