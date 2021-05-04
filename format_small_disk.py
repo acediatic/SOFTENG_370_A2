@@ -46,9 +46,10 @@ def format_root():
     fh = int_to_bytes(0, FH_SIZE)
 
     # 1 + 1 + 37 + 1
-    root_data = next_file + next_free_block + metadata + fh  # + other data
+    root_data = next_file + next_free_block + metadata + fh
+    padded_root_data = root_data + bytearray(BLOCK_SIZE - len(root_data)) 
 
-    write_block(0, root_data)
+    write_block(0, padded_root_data)
 
 
 def format_block(block_num, next_free_block):
@@ -60,7 +61,7 @@ def format_block(block_num, next_free_block):
 
 def format_all_blocks():
     # formats all blocks EXCEPT ROOT
-    for i in range(NUM_BLOCKS):
+    for i in range(1, NUM_BLOCKS):
         format_block(i, i+1)
 
 
