@@ -113,7 +113,9 @@ class SmallDisk(LoggingMixIn, Operations):
         fnum = self.get_first_file(dir_num)
         while(fnum < NUM_BLOCKS):
             fname = self.get_file_name(fnum)
-            filenames.append('/' + fname.split('/')[-1])
+
+            if len(fname.split(path)) == 2:
+                filenames.append('/' + fname.split('/')[-1])
 
             fnum = self.find_next_file(fnum)
 
