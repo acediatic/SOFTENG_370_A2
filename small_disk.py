@@ -10,7 +10,7 @@ from time import time
 from errno import ENOENT
 from stat import S_IFDIR, S_IFLNK, S_IFREG
 
-from disktools import NUM_BLOCKS, bytes_to_int, int_to_bytes, path_name_as_bytes, print_block, read_block, write_block
+from disktools import NUM_BLOCKS, bytes_to_int, bytes_to_pathname, int_to_bytes, path_name_as_bytes, read_block, write_block
 
 from format_small_disk import create_file_data
 
@@ -31,6 +31,9 @@ ATIME_LOC = 17 + FILE_DATA_LOC
 
 MTIME_SIZE = 4
 ATIME_SIZE = 4
+
+NAME_SIZE = 16
+NAME_LOC = FILE_DATA_LOC + FILE_DATA_SIZE - NAME_SIZE
 
 
 class SmallDisk(LoggingMixIn, Operations):
@@ -112,6 +115,27 @@ class SmallDisk(LoggingMixIn, Operations):
     def listxattr(self, path):
         attrs = self.getattr(path)
         return attrs.keys()
+
+    def get_all_filenames(self) -> list:
+        filenames = []
+        # This intentionally skips the root
+        fnum = self.get_first_file()
+        while(fnum < NUM_BLOCKS):
+            fname = self.get_file_name(fnum)
+            filenames.append(fname)
+
+            fnum = self.find_next_file(fnum)
+        
+        return filenames
+
+    def get_file_name(self, file_num):
+        file_data = read_block(file_num)
+        name_data = file_data[NAME_LOC:NAME_LOC+NAME_SIZE]
+        print("Name data", name_data)
+        return bytes_to_pathname(name_data)
+
+    def readdir(self, path, fh):
+        return ['.', '..'] + [x[1:] for x in self.get_all_filenames()]
 
     def get_file_data(self, file_meta_block_num):
         meta_block = read_block(file_meta_block_num)

@@ -74,7 +74,8 @@ def bytes_to_int(bytes):
 def path_name_as_bytes(path):
     name_bytes = []
 
-    file_name = path.split('/')[-1]
+    file_name = path #.split('/')[-1]
+
     if not file_name:
         file_name = '/'
 
@@ -86,6 +87,16 @@ def path_name_as_bytes(path):
     name = b''.join(name_bytes)
 
     return name
+
+def bytes_to_pathname(bytes):
+    ascii_name = []
+    for int_val in bytes:
+        if int_val == 0:
+            break
+        else:
+            ascii_name.append(chr(int_val))
+    
+    return ''.join(ascii_name)
 
 
 if __name__ == '__main__':
