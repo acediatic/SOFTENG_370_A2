@@ -1,6 +1,9 @@
 from __future__ import print_function, division
+from errno import EINVAL
 import os
 from constants import *
+from fuse import FuseOSError
+
 
 def low_level_format():
     '''Creates the file system space on disk.
@@ -65,11 +68,10 @@ def bytes_to_int(bytes):
     return value
 
 
-
 def path_name_as_bytes(path):
     name_bytes = []
 
-    file_name = path #.split('/')[-1]
+    file_name = path
 
     if not file_name:
         file_name = '/'
@@ -77,11 +79,15 @@ def path_name_as_bytes(path):
     for c in file_name:
         name_bytes.append(int_to_bytes(ord(c), 1))
 
+    if NAME_SIZE - len(name_bytes) < 0:
+        raise FuseOSError(EINVAL)
+
     name_bytes.append(bytearray(NAME_SIZE - len(name_bytes)))
 
     name = b''.join(name_bytes)
 
     return name
+
 
 def bytes_to_pathname(bytes):
     ascii_name = []
@@ -90,7 +96,7 @@ def bytes_to_pathname(bytes):
             break
         else:
             ascii_name.append(chr(int_val))
-    
+
     return ''.join(ascii_name)
 
 
