@@ -10,7 +10,7 @@ from time import time
 from errno import ENOENT
 from stat import S_IFDIR, S_IFLNK, S_IFREG
 
-from disktools import NUM_BLOCKS, bytes_to_int, int_to_bytes, path_name_as_bytes, read_block, write_block
+from disktools import NUM_BLOCKS, bytes_to_int, int_to_bytes, path_name_as_bytes, print_block, read_block, write_block
 
 from format_small_disk import create_file_data
 
@@ -38,7 +38,8 @@ class SmallDisk(LoggingMixIn, Operations):
 
     def get_first_file(self):
         root = read_block(0)
-        return root[NEXT_FILE_LOC]
+        fh_b = root[NEXT_FILE_LOC: NEXT_FILE_LOC + NEXT_FILE_SIZE]
+        return bytes_to_int(fh_b)
 
     def get_first_free_block(self):
         root = read_block(0)
@@ -46,7 +47,7 @@ class SmallDisk(LoggingMixIn, Operations):
 
     def get_fh(self):
         root = read_block(0)
-        return root[FILE_DATA_LOC]
+        return root[FH_LOC]
 
     def create(self, path, mode):
         file_data = create_file_data(path, (S_IFREG | mode))
@@ -73,18 +74,18 @@ class SmallDisk(LoggingMixIn, Operations):
 
         return fh
 
-    # def utimens(self, path, times=None):
-    #     now = int(time())
+    def utimens(self, path, times=None):
+        now = int(time())
 
-    #     times = tuple(int(t) for t in times)
-    #     atime, mtime = times if times else (now, now)
+        times = tuple(int(t) for t in times)
+        atime, mtime = times if times else (now, now)
 
-    #     file_num = self.find_file_num(path)
+        file_num = self.find_file_num(path)
 
-    #     self.convert_bytes_and_update_block(
-    #         file_num, MTIME_LOC, mtime, MTIME_SIZE)
-    #     self.convert_bytes_and_update_block(
-    #         file_num, ATIME_LOC, atime, ATIME_SIZE)
+        self.convert_bytes_and_update_block(
+            file_num, MTIME_LOC, mtime, MTIME_SIZE)
+        self.convert_bytes_and_update_block(
+            file_num, ATIME_LOC, atime, ATIME_SIZE)
 
     def unlink(self, path):
         (prev_block_num, file_block_num, next_block_num) = self.find_file_tuple(path)
@@ -199,7 +200,7 @@ class SmallDisk(LoggingMixIn, Operations):
 
     def update_block(self, block_num: int, start: int, data: bytearray):
         block_data = read_block(block_num)
-        end = len(data)
+        end = start + len(data)
 
         block_data[start:end] = data
         write_block(block_num, block_data)
