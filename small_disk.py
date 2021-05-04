@@ -207,13 +207,13 @@ class SmallDisk(LoggingMixIn, Operations):
             write_block(file_blocks[i], NO_NEXT_FILE +
                         b_next_block + data_to_write)
 
-        # update file size in metadata 
+        # update file size in metadata
         self.convert_bytes_and_update_block(
             file_num, FILE_DATA_LOC + ST_SIZE_LOC, new_file_size, ST_SIZE_SIZE)
 
-        # update file first block in metadata 
+        # update file first block in metadata
         self.convert_bytes_and_update_block(
-            file_num, NEXT_BLOCK_LOC, file_blocks[i], NEXT_BLOCK_SIZE)
+            file_num, NEXT_BLOCK_LOC, file_blocks[0], NEXT_BLOCK_SIZE)
 
         if data != None:
             return len(data)
