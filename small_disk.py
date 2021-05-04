@@ -186,7 +186,7 @@ class SmallDisk(LoggingMixIn, Operations):
         meta_block = read_block(file_meta_block_num)
         file_details = dict()
 
-        details = ["st_mode", "st_uid", "st_gid", "st_nlinks",
+        details = ["st_mode", "st_uid", "st_gid", "st_nlink",
                    "st_size", "st_ctime", "st_mtime", "st_atime"]
 
         locations = [2, 4, 6, 7, 9, 13, 17, 21]

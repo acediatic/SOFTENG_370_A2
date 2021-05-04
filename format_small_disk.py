@@ -14,14 +14,14 @@ GID = getgid()
 
 
 # Create the file's data (metadata).
-def create_file_data(path, o_mode, st_n_links = 1):
+def create_file_data(path, o_mode, st_n_link = 1):
 
     int_now = int(time())
 
     st_mode = int_to_bytes(o_mode, ST_MODE_SIZE)
     st_uid = int_to_bytes(UID, ST_UID_SIZE)
     st_gid = int_to_bytes(GID, ST_GID_SIZE)
-    st_nlinks = int_to_bytes(st_n_links, ST_NLINKS_SIZE)
+    st_nlink = int_to_bytes(st_n_link, ST_NLINKS_SIZE)
     st_size = int_to_bytes(0, ST_SIZE_SIZE)
     st_ctime = int_to_bytes(int_now, ST_CTIME_SIZE)
     st_mtime = int_to_bytes(int_now, ST_MTIME_SIZE)
@@ -29,7 +29,7 @@ def create_file_data(path, o_mode, st_n_links = 1):
 
     st_name = path_name_as_bytes(path)
 
-    file_data = st_mode + st_uid + st_gid + st_nlinks + st_size + \
+    file_data = st_mode + st_uid + st_gid + st_nlink + st_size + \
         st_ctime + st_mtime + st_atime + st_name
 
     return file_data
