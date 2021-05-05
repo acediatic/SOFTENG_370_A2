@@ -17,14 +17,16 @@ from constants import *
 
 
 class SmallDisk(LoggingMixIn, Operations):
-    'Example memory filesystem. Supports only one level of files.'
-
     def get_first_file(self, root_num):
+        ''' returns the block number of the file pointed to by the current file '''
         root = read_block(root_num)
         fh_b = root[NEXT_FILE_LOC: NEXT_FILE_LOC + NEXT_FILE_SIZE]
         return bytes_to_int(fh_b)
 
     def get_block(self, block_num):
+        ''' returns the free/used block pointed to by the current file. 
+        For files, this is the first data block. For the root, 
+        this is the first free block '''
         current_block = read_block(block_num)
         b_block_num = current_block[NEXT_BLOCK_LOC: NEXT_BLOCK_LOC+NEXT_BLOCK_SIZE]
         return bytes_to_int(b_block_num)
@@ -38,6 +40,8 @@ class SmallDisk(LoggingMixIn, Operations):
         return bytes_to_int(file_data[FILE_DATA_LOC + ST_SIZE_LOC: FILE_DATA_LOC + ST_SIZE_LOC + ST_SIZE_SIZE])
 
     def create(self, path, mode):
+        ''' creates a file at path with no data blocks, and adds it to the
+        linked list of files. '''
         file_data = create_file_data(path, (S_IFREG | mode))
 
         next_file = int_to_bytes(NUM_BLOCKS, NEXT_FILE_SIZE)
@@ -47,16 +51,15 @@ class SmallDisk(LoggingMixIn, Operations):
 
         # Finds the next free block, updating both self and file.
         next_free_block = self.find_free_block()
-
         write_block(next_free_block, data)
 
+        # increments fh in the root.
         fh = self.get_fh()
         fh += 1
-
         self.convert_bytes_and_update_block(ROOT_LOC, FH_LOC, fh, FH_SIZE)
 
+        # adds this file to the end of the file linked list
         last_file = self.find_last_file()
-
         self.convert_bytes_and_update_block(
             last_file, NEXT_FILE_LOC, next_free_block, NEXT_FILE_SIZE)
 
@@ -81,6 +84,8 @@ class SmallDisk(LoggingMixIn, Operations):
         if (prev_block_num == file_block_num or prev_block_num == next_block_num or file_block_num == next_block_num):
             raise IOError("prev, current, or next block equal")
 
+        # removes the current file from the file linked list by making the previous file
+        # point to the next file.
         self.convert_bytes_and_update_block(
             prev_block_num, NEXT_FILE_LOC, next_block_num, NEXT_FILE_SIZE)
 
@@ -108,6 +113,7 @@ class SmallDisk(LoggingMixIn, Operations):
         return attrs.keys()
 
     def get_all_filenames(self, path) -> list:
+        ''' returns a list of all filenames for the current directory (.,.. excl)'''
         filenames = []
 
         # files will always come after their directory
@@ -125,6 +131,7 @@ class SmallDisk(LoggingMixIn, Operations):
         return filenames
 
     def get_all_file_blocks(self, file_num):
+        ''' returns a list of the block numbers containing file data for the input file'''
         block_nums = []
         b_num = self.get_block(file_num)
 
@@ -135,6 +142,7 @@ class SmallDisk(LoggingMixIn, Operations):
         return block_nums
 
     def get_file_name(self, file_num):
+        ''' returns the name of the file with metadata in block file_num'''
         file_data = read_block(file_num)
         name_data = file_data[NAME_LOC:NAME_LOC+NAME_SIZE]
         return bytes_to_pathname(name_data)
@@ -158,12 +166,17 @@ class SmallDisk(LoggingMixIn, Operations):
         self.change_n_link(dir_num)
 
     def get_dir_path(self, path):
+        ''' gets the path of the parent directory from the input path '''
         dir_path = path.rsplit('/', 1)[0]
         if not dir_path:
             dir_path = '/'
         return dir_path
 
     def change_n_link(self, dir_num: int, positive=True):
+        ''' changes the n_links for the input directory.
+
+        Args: 
+            bool Positive: true for increment, false for decrement '''
         direction = 1 if positive else -1
 
         root = read_block(dir_num)
@@ -177,6 +190,7 @@ class SmallDisk(LoggingMixIn, Operations):
         return ['.', '..'] + [x[1:] for x in self.get_all_filenames(path)]
 
     def rmdir(self, path):
+        ''' removes directory if it does not contain files, otherwise raises error'''
         if len(self.readdir(path)) > 2:
             raise FuseOSError(ENOTEMPTY)
         else:
@@ -186,6 +200,7 @@ class SmallDisk(LoggingMixIn, Operations):
             self.change_n_link(parent_num)
 
     def get_file_description(self, file_meta_block_num):
+        ''' returns the description of the file from its metadata as a dictionary'''
         meta_block = read_block(file_meta_block_num)
         file_details = dict()
 
@@ -203,6 +218,7 @@ class SmallDisk(LoggingMixIn, Operations):
         return file_details
 
     def get_current_file_data(self, file_num):
+        ''' Fetches all the data currently stored in the input file'''
         file_blocks = self.get_all_file_blocks(file_num)
 
         current_file_data = b''
@@ -214,15 +230,18 @@ class SmallDisk(LoggingMixIn, Operations):
         return current_file_data
 
     def write(self, path, data, offset, fh, length=None):
+        ''' writes the data to file stored at path '''
         file_num = self.find_file_num(path)
         file_blocks = self.get_all_file_blocks(file_num)
 
         file_size = self.get_file_size(file_num)
 
+        # fetches only the data that is real data, removing padding of rest of last block.
         current_file_data = self.get_current_file_data(file_num)
         current_file_data = current_file_data[:file_size]
 
         if length == None:
+            # length == None indicates it is a regular write call
             new_data = (current_file_data[:offset].ljust(offset, '\x00'.encode('ascii'))
                         + data
                         # and only overwrites the bytes that data is replacing
@@ -234,8 +253,6 @@ class SmallDisk(LoggingMixIn, Operations):
 
         new_file_size = len(new_data)
 
-        print("NEW LENGTH!", new_file_size)
-
         num_blocks_needed = max(ceil(new_file_size / EFFECTIVE_BLOCK_SIZE), 1)
 
         if len(file_blocks) != num_blocks_needed:
@@ -245,6 +262,8 @@ class SmallDisk(LoggingMixIn, Operations):
                         file_blocks.append(self.find_free_block())
                     except:
                         if not file_blocks:
+                            # Only got a metadata block and not a data block.
+                            # Unlink metadata block, no room for file.
                             self.unlink(file_num)
                         raise IOError("No free blocks remaining")
             else:
@@ -281,10 +300,13 @@ class SmallDisk(LoggingMixIn, Operations):
     ##### UTIL METHODS #####
 
     def find_file_num(self, path):
+        ''' returns the block number of the metadata block for file with name path'''
         _, file_num, _ = self.find_file_tuple(path)
         return file_num
 
     def find_file_tuple(self, path: str) -> Tuple[int, int, int]:
+        ''' finds the preceding (points to), current (points to), and next file 
+        for the file with name path'''
         b_name_to_find = path_name_as_bytes(path)
 
         block_num = ROOT_LOC
@@ -308,6 +330,7 @@ class SmallDisk(LoggingMixIn, Operations):
                 block_num = current_block[NEXT_FILE_LOC]
 
     def find_last_file(self) -> int:
+        ''' fetches the block number of the last file in the file linked list'''
         current_block_num = next_block_num = ROOT_LOC
 
         while next_block_num < NUM_BLOCKS:
@@ -317,10 +340,13 @@ class SmallDisk(LoggingMixIn, Operations):
         return current_block_num
 
     def find_next_file(self, current_file):
+        ''' retrieves the block number of the file pointed to by the current file'''
         current_meta = read_block(current_file)
         return current_meta[0]
 
     def update_block(self, block_num: int, start: int, data: bytearray):
+        ''' reads a whole block, overwrites data between start and len(data), and rewrites the 
+        whole block back to memory'''
         block_data = read_block(block_num)
         end = start + len(data)
 
@@ -329,10 +355,13 @@ class SmallDisk(LoggingMixIn, Operations):
         write_block(block_num, block_data)
 
     def convert_bytes_and_update_block(self, block_num: int, start: int, data: int, num_bytes: int):
+        ''' converts data to bytearray of size num_bytes, then updates the block with this data'''
         data = int_to_bytes(data, num_bytes)
         self.update_block(block_num, start, data)
 
     def find_free_block(self):
+        ''' retrieves a free block from the front of the free block linked list. It then updates 
+        the root to point to the next free block, and returns the first free block'''
         first_free_block_i = self.get_block(ROOT_LOC)
         if first_free_block_i >= NUM_BLOCKS:
             raise IOError("No free blocks remaining")
@@ -347,6 +376,9 @@ class SmallDisk(LoggingMixIn, Operations):
         return first_free_block_i
 
     def format_block(self, block_num):
+        ''' formats a block and inserts it at the front of the free block linked list.
+        This means the block now has no data written and points to no file, 
+        but points to the next free block '''
         first_free_block = self.get_block(ROOT_LOC)
         format_block(block_num, first_free_block)
 
