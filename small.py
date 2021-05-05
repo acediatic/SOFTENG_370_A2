@@ -15,6 +15,7 @@ from disktools import BLOCK_SIZE, NUM_BLOCKS, bytes_to_int,  int_to_bytes, print
 from format import create_file_data, format_block, format_dir, path_name_as_bytes, bytes_to_pathname
 from constants import *
 
+
 class SmallDisk(LoggingMixIn, Operations):
     'Example memory filesystem. Supports only one level of files.'
 
@@ -82,6 +83,12 @@ class SmallDisk(LoggingMixIn, Operations):
 
         self.convert_bytes_and_update_block(
             prev_block_num, NEXT_FILE_LOC, next_block_num, NEXT_FILE_SIZE)
+
+        file_blocks = self.get_all_file_blocks(file_block_num)
+        file_blocks.append(file_block_num)
+
+        while(file_blocks):
+            self.format_block(file_blocks.pop())
 
     def getattr(self, path, fh=None):
         file_block_num = self.find_file_num(path)
@@ -234,7 +241,12 @@ class SmallDisk(LoggingMixIn, Operations):
         if len(file_blocks) != num_blocks_needed:
             if len(file_blocks) < num_blocks_needed:
                 while len(file_blocks) < num_blocks_needed:
-                    file_blocks.append(self.find_free_block())
+                    try:
+                        file_blocks.append(self.find_free_block())
+                    except:
+                        if not file_blocks:
+                            self.unlink(file_num)
+                        raise IOError("No free blocks remaining")
             else:
                 while len(file_blocks) > num_blocks_needed:
                     self.format_block(file_blocks.pop())

@@ -58,7 +58,7 @@ def format_dir(path, mode, file_num = 0, next_free_block = 1):
 def format_block(block_num, next_free_block):
     null_next_file = int_to_bytes(NUM_BLOCKS, NEXT_FILE_SIZE)
     next_block = int_to_bytes(next_free_block, NEXT_BLOCK_SIZE)
-    padded_data = null_next_file + next_block + bytearray(BLOCK_SIZE - 2)
+    padded_data = null_next_file + next_block + bytearray(BLOCK_SIZE - (NEXT_FILE_SIZE + NEXT_BLOCK_SIZE))
     write_block(block_num, padded_data)
 
 

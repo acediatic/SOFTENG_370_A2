@@ -1,4 +1,4 @@
 #!/bin/bash
 
-python3 format_small_disk.py
-python3 small_disk.py mount
+python3 format.py
+python3 small.py mount
